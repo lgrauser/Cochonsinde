@@ -1,0 +1,202 @@
+/* =========================================================================
+   Cavia Con Carne: Pan-Flute Fury
+   styles.css — page chrome around the <canvas> game.
+
+   The game itself is drawn entirely on a <canvas> by game.js (using
+   Characters + RhythmEngine). This stylesheet only styles the *page*:
+   a cheerful full-viewport background, a centered, framed, responsive
+   canvas, an optional title header, and a small footer credit line.
+
+   No external fonts or images — system font stack + CSS gradients only,
+   so it works over file:// with a double-click.
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   1. Reset-ish base: kill default margins, sane box-sizing, no stray focus
+      rings that would clash with the game's own canvas visuals.
+   ------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Remove the default focus outline globally, then restore a tasteful,
+   keyboard-only focus ring where it actually matters (see :focus-visible
+   below). This keeps mouse clicks clean without hurting accessibility. */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 3px solid #F9E04C;          /* fiesta yellow — warm + high contrast */
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* -------------------------------------------------------------------------
+   2. Page background: dark, cozy, cheerful.
+      A layered radial + linear gradient evokes a warm meadow-at-dusk /
+      fiesta glow without any image assets. Fixed attachment so it stays
+      put while the (short) page scrolls on small screens.
+   ------------------------------------------------------------------------- */
+body {
+  /* System font stack only — no web fonts. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+
+  color: #F4D9B0;                       /* guineaPig cream for any page text */
+
+  /* Cozy dark base with warm spotlights top-left (meadow green) and
+     bottom-right (fiesta violet/orange) fading into a deep night blue. */
+  background-color: #1a1226;
+  background-image:
+    radial-gradient(1200px 800px at 15% 0%,  rgba(87, 176, 74, 0.35), transparent 60%),
+    radial-gradient(1000px 900px at 100% 100%, rgba(228, 70, 47, 0.30), transparent 55%),
+    radial-gradient(900px 700px at 85% 10%,  rgba(249, 224, 76, 0.15), transparent 50%),
+    linear-gradient(160deg, #241633 0%, #1a1226 45%, #120c1c 100%);
+  background-attachment: fixed;
+
+  /* Center the game vertically + horizontally, stacking header/canvas/footer. */
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 2.5vh, 22px);
+  padding: clamp(12px, 3vh, 32px);
+
+  /* Smoother text on the warm background. */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* -------------------------------------------------------------------------
+   3. Optional title header. game.js draws its own in-canvas title screen,
+      but a lightweight page-level header reads nicely above the frame and
+      helps on very tall viewports. Style .game-header if present; it does
+      no harm if the markup omits it.
+   ------------------------------------------------------------------------- */
+.game-header {
+  text-align: center;
+  line-height: 1.1;
+  user-select: none;
+}
+
+.game-header h1 {
+  margin: 0;
+  font-size: clamp(20px, 4.2vw, 40px);
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  /* Warm gold-to-pink gradient text, with a soft glow behind it. */
+  background: linear-gradient(90deg, #F9E04C 0%, #F6A623 45%, #F0A0B4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 2px 18px rgba(249, 224, 76, 0.25);
+}
+
+.game-header .tagline {
+  margin: 6px 0 0;
+  font-size: clamp(11px, 1.8vw, 15px);
+  font-style: italic;
+  color: rgba(244, 217, 176, 0.72);
+}
+
+/* -------------------------------------------------------------------------
+   4. The star of the show: the game canvas.
+      - Centered by the fl0 body flex layout.
+      - Responsive: never wider than the viewport, keeps its 4:3-ish aspect
+        via width/height attributes on the element (aspect-ratio fallback).
+      - Framed with a rounded border, warm inner ring, and deep drop shadow
+        so it floats above the background like an arcade cabinet screen.
+      - Crisp scaling: the game art is chunky/pixel-friendly, so we ask the
+        browser not to over-smooth when the canvas is scaled down.
+   ------------------------------------------------------------------------- */
+canvas {
+  display: block;
+
+  /* Responsive sizing while preserving aspect ratio. The canvas element's
+     intrinsic width:height attributes drive the ratio; these limits stop it
+     from overflowing the frame on any viewport. */
+  max-width: min(96vw, 960px);
+  max-height: 86vh;
+  width: auto;
+  height: auto;
+
+  /* Framing: layered warm border + glow. */
+  border-radius: 16px;
+  border: 3px solid rgba(249, 224, 76, 0.55);   /* golden bezel */
+  background: #0c0912;                            /* letterbox behind art */
+  box-shadow:
+    0 0 0 6px rgba(20, 12, 28, 0.85),            /* dark outer mat */
+    0 18px 50px -12px rgba(0, 0, 0, 0.75),        /* floating drop shadow */
+    0 0 60px -10px rgba(228, 70, 47, 0.35),       /* warm ambient glow */
+    inset 0 0 40px rgba(0, 0, 0, 0.55);           /* subtle vignette */
+
+  /* Crisp, pixel-friendly downscaling of the chunky canvas art.
+     crisp-edges/pixelated keep primitives sharp instead of blurry. */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+
+  /* The game handles all input on the canvas; suppress the mobile
+     double-tap-zoom / text-selection so taps feel like button presses. */
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* -------------------------------------------------------------------------
+   5. Footer credit line — small, unobtrusive, warm.
+   ------------------------------------------------------------------------- */
+.game-footer {
+  text-align: center;
+  font-size: clamp(10px, 1.5vw, 12px);
+  letter-spacing: 0.3px;
+  color: rgba(244, 217, 176, 0.45);
+  user-select: none;
+}
+
+.game-footer a {
+  color: rgba(249, 224, 76, 0.7);
+  text-decoration: none;
+}
+
+.game-footer a:hover {
+  color: #F9E04C;
+  text-decoration: underline;
+}
+
+/* -------------------------------------------------------------------------
+   6. Small-screen tweaks: reclaim vertical space so the canvas stays large.
+   ------------------------------------------------------------------------- */
+@media (max-height: 560px) {
+  .game-header .tagline {
+    display: none;                     /* hide tagline when height is tight */
+  }
+  body {
+    gap: 8px;
+    padding: 8px;
+  }
+  canvas {
+    max-height: 90vh;
+  }
+}
+
+/* Respect users who prefer reduced motion: the page chrome has no essential
+   animation, but if any transitions are added later this disables them. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

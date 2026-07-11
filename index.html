@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Cavia Con Carne: Pan-Flute Fury</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Optional page chrome (styled by styles.css; the game also draws its own
+       in-canvas title & results, so this is purely decorative). -->
+  <header class="game-header">
+    <h1>Cavia Con Carne: Pan-Flute Fury</h1>
+    <p class="tagline">Out-pipe the llamas &amp; mariachis &mdash; hit the arrows with <strong>D&nbsp;F&nbsp;J&nbsp;K</strong> or the <strong>arrow keys</strong>. &uarr;&darr; pick a battle, Enter to start.</p>
+  </header>
+
+  <!-- The game canvas. Intrinsic 900x600 (3:2) drives the responsive sizing in
+       styles.css; game.js scales the backing store by devicePixelRatio itself. -->
+  <canvas id="game" width="900" height="600">
+    Your browser does not support the HTML5 canvas element.
+  </canvas>
+
+  <footer class="game-footer">
+    A synth-powered guinea-pig rhythm brawl &mdash; no downloads, no server, just double-click.
+  </footer>
+
+  <!-- Classic scripts, loaded in contract order (NO type=module).
+       audio -> characters -> songs -> rhythm -> game. -->
+  <script src="js/audio.js"></script>
+  <script src="js/characters.js"></script>
+  <script src="js/songs.js"></script>
+  <script src="js/rhythm.js"></script>
+  <script src="js/game.js"></script>
+
+  <!-- Bootstrap: build the Game once the DOM (and thus the canvas) exists. -->
+  <script>
+    (function () {
+      function boot() {
+        var canvas = document.getElementById('game');
+        if (canvas) { new Game(canvas); }
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+      } else {
+        boot();
+      }
+    })();
+  </script>
+</body>
+</html>
