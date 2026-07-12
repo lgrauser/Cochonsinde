@@ -22,6 +22,20 @@ live-synthesized WebAudio sound &mdash; **no images, no audio files, no server.*
   resumes and **Enter** quits to the menu.
 - **Results:** **Enter** replays the same battle, **Esc** returns to the menu.
 
+### On a phone / tablet (touch)
+
+The game is fully playable by touch. Hold the device in **landscape** (it shows a
+"rotate your phone" hint in portrait), then:
+
+- **Menu:** tap a battle to select it, tap it again to start.
+- **Battle:** four big arrow buttons sit along the bottom of the screen &mdash; tap
+  them in time with the falling notes (multi-touch works, so you can hit two at
+  once). Tap **&#10074;&#10074; Pause** (top-right) to pause.
+- **Pause / Results:** tap the on-screen **Resume / Replay / Menu** buttons.
+
+The whole page behaves like an app on touch devices: no scrolling, pinch-zoom, or
+double-tap-zoom &mdash; every tap is a button press.
+
 ### The three battles
 
 1. **Meadow Wheek-Off** &mdash; vs a smug llama, 96 BPM (easy warm-up).
@@ -35,8 +49,25 @@ based on how many PERFECT hits you land.
 
 Just **open `index.html`** in any modern browser &mdash; double-click the file, no
 web server or build step required. Everything runs over `file://`. Sound unlocks
-automatically on your first keypress (a browser autoplay requirement); if audio
+automatically on your first keypress/tap (a browser autoplay requirement); if audio
 is blocked, the game plays on silently rather than crashing.
+
+### Play it on your phone (GitHub Pages)
+
+Because it's a fully static site, it hosts for free on **GitHub Pages** &mdash; ideal
+for opening on a phone. This repo ships a deploy workflow at
+`.github/workflows/deploy-pages.yml` that publishes the site on every push.
+
+One-time setup: in the repository, go to **Settings &rarr; Pages** and set
+**Build and deployment &rarr; Source** to **GitHub Actions**. (The workflow also
+attempts to enable this automatically.) After the next push, the **Deploy to
+GitHub Pages** action runs and the game goes live at:
+
+```
+https://lgrauser.github.io/Cochonsinde/
+```
+
+Open that URL on your phone, rotate to landscape, and tap to play.
 
 ## Architecture
 

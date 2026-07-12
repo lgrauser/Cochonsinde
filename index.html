@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1226">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Cavia Con Carne: Pan-Flute Fury</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -23,6 +26,14 @@
   <footer class="game-footer">
     A synth-powered guinea-pig rhythm brawl &mdash; no downloads, no server, just double-click.
   </footer>
+
+  <!-- Shown only on small portrait screens (phones held upright). The game is a
+       landscape 3:2 stage, so it plays best sideways. Hidden in landscape. -->
+  <div class="rotate-hint" aria-hidden="true">
+    <div class="rotate-hint__icon">📱↻</div>
+    <p><strong>Tourne ton téléphone</strong><br>Le jeu se joue en mode paysage.</p>
+    <p class="rotate-hint__sub">Touche les 4 flèches en rythme pour jouer de la flûte de pan&nbsp;!</p>
+  </div>
 
   <!-- Classic scripts, loaded in contract order (NO type=module).
        audio -> characters -> songs -> rhythm -> game. -->

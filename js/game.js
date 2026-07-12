@@ -117,6 +117,52 @@
   }
 
   /* ================================================================== *
+   * TOUCH / POINTER hit-boxes (logical coordinates).
+   * These same rects are used by both the renderer (to draw the on-screen
+   * buttons) and the input router (to hit-test taps), so they always match.
+   * ================================================================== */
+
+  var LANE_TAP_TOP = 452;                // taps below this y in a battle press a lane
+  var LANE_BTN_TOP = 548;                // where the visible lane buttons start
+
+  function pointInRect(px, py, r) {
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
+  // Song-select row i (mirrors the geometry drawn in _renderMenu).
+  function menuRowRect(i) { return { x: 424, y: 194 + i * 78, w: 432, h: 72 }; }
+  // Visible lane button i (full-width quarters along the bottom).
+  function laneBtnRect(i) { var bw = W / 4; return { x: i * bw + 7, y: LANE_BTN_TOP, w: bw - 14, h: H - LANE_BTN_TOP - 8 }; }
+  // Small pause button, top-right under the HUD bars.
+  function pauseBtnRect() { return { x: W - 150, y: 62, w: 126, h: 34 }; }
+  // Two footer buttons on the results screen.
+  function resultBtnRects() {
+    var bw = 176, bh = 46, gap = 26, x0 = (W - (bw * 2 + gap)) / 2, y = H - 66;
+    return { replay: { x: x0, y: y, w: bw, h: bh }, menu: { x: x0 + bw + gap, y: y, w: bw, h: bh } };
+  }
+  // Two centered buttons on the pause overlay.
+  function pauseMenuRects() {
+    var bw = 210, bh = 50, gap = 22, total = bw * 2 + gap, x0 = (W - total) / 2, y = H / 2 + 18;
+    return { resume: { x: x0, y: y, w: bw, h: bh }, menu: { x: x0 + bw + gap, y: y, w: bw, h: bh } };
+  }
+  // Generic rounded button used by the touch overlays.
+  function drawButton(ctx, r, label, fill, textColor, big) {
+    ctx.save();
+    roundRect(ctx, r.x, r.y, r.w, r.h, Math.min(14, r.h / 2));
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(42,35,64,0.35)';
+    ctx.stroke();
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '700 ' + (big ? 20 : 16) + 'px system-ui, sans-serif';
+    ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2 + 1);
+    ctx.restore();
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  /* ================================================================== *
    * Game class
    * ================================================================== */
 
@@ -157,15 +203,31 @@
     this.recentPerfect = 0;         // seconds since last perfect (drives hero glee)
     this.hitShake = 0;              // small screen-shake pulse on miss
 
+    // --- touch / pointer -------------------------------------------
+    this._touchUsed = false;         // once true, on-screen touch buttons render
+    this._touchMap = {};             // pointer/touch id -> lane dir (for release)
+
     // --- bind & wire -----------------------------------------------
     this._onKeyDown = this._handleKeyDown.bind(this);
     this._onKeyUp = this._handleKeyUp.bind(this);
     this._onResize = this._resize.bind(this);
     this._loop = this._frame.bind(this);
+    this._onTouchStart = this._handleTouchStart.bind(this);
+    this._onTouchEnd = this._handleTouchEnd.bind(this);
+    this._onMouseDown = this._handleMouseDown.bind(this);
+    this._onMouseUp = this._handleMouseUp.bind(this);
 
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
     window.addEventListener('resize', this._onResize);
+    window.addEventListener('orientationchange', this._onResize);
+    // Touch: passive:false so we can preventDefault (stop scroll/zoom/double-tap).
+    this.canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+    this.canvas.addEventListener('touchend', this._onTouchEnd, { passive: false });
+    this.canvas.addEventListener('touchcancel', this._onTouchEnd, { passive: false });
+    // Mouse: lets desktop players click the menu / on-screen buttons too.
+    this.canvas.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mouseup', this._onMouseUp);
 
     this._resize();
     requestAnimationFrame(this._loop);
@@ -251,6 +313,12 @@
     e.preventDefault();
 
     if (e.repeat) return;           // ignore auto-repeat while a key is held
+    this._pressLane(dir);
+  };
+
+  // Register a single hit on a lane (shared by keyboard AND touch/mouse input).
+  Game.prototype._pressLane = function (dir) {
+    if (this.state !== 'battle') return;
     this.laneHeld[dir] = true;
     this.laneFlash[dir] = 0.16;     // light the lane briefly
 
@@ -258,7 +326,7 @@
     var j = this.rhythm.judge(dir, now);
 
     // Audio + visual feedback.
-    this.audio.playFlute(dir);      // the pan flute always sings on a keypress
+    this.audio.playFlute(dir);      // the pan flute always sings on a press
     if (j.result === 'perfect') {
       this.audio.sfx('perfect');
       this.recentPerfect = 0.9;
@@ -270,6 +338,86 @@
       this.hitShake = 0.18;
     }
     this._spawnFloater(dir, j.result);
+  };
+
+  /* ================================================================== *
+   * TOUCH / MOUSE input — routed through the same state machine as keys.
+   * ================================================================== */
+
+  // Map a viewport (client) coordinate onto the fixed 900x600 logical space.
+  Game.prototype._clientToLogical = function (clientX, clientY) {
+    var rect = this.canvas.getBoundingClientRect();
+    var sx = rect.width ? W / rect.width : 1;
+    var sy = rect.height ? H / rect.height : 1;
+    return { x: (clientX - rect.left) * sx, y: (clientY - rect.top) * sy };
+  };
+
+  Game.prototype._handleTouchStart = function (e) {
+    e.preventDefault();             // stop scroll / pinch / double-tap-zoom
+    this._touchUsed = true;
+    this._unlockAudio();
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      var t = e.changedTouches[i];
+      var p = this._clientToLogical(t.clientX, t.clientY);
+      this._tapDown(p.x, p.y, 't' + t.identifier);
+    }
+  };
+
+  Game.prototype._handleTouchEnd = function (e) {
+    if (e.cancelable) e.preventDefault();
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      this._tapUp('t' + e.changedTouches[i].identifier);
+    }
+  };
+
+  Game.prototype._handleMouseDown = function (e) {
+    this._touchUsed = true;
+    this._unlockAudio();
+    var p = this._clientToLogical(e.clientX, e.clientY);
+    this._tapDown(p.x, p.y, 'mouse');
+  };
+
+  Game.prototype._handleMouseUp = function () { this._tapUp('mouse'); };
+
+  Game.prototype._unlockAudio = function () {
+    if (this.audioUnlocked) return;
+    this.audioUnlocked = true;
+    try { this.audio.resume(); } catch (err) { /* audio optional */ }
+  };
+
+  // A pointer went down at logical (lx,ly). Route by state; `id` lets us release
+  // the right lane on the matching touchend (multi-touch friendly).
+  Game.prototype._tapDown = function (lx, ly, id) {
+    if (this.state === 'menu') {
+      for (var i = 0; i < SONGS.length; i++) {
+        if (pointInRect(lx, ly, menuRowRect(i))) {
+          if (i === this.menuIndex) { this.audio.sfx('select'); this._startCountIn(SONGS[i]); }
+          else { this.menuIndex = i; this.audio.sfx('select'); }
+          return;
+        }
+      }
+    } else if (this.state === 'battle') {
+      if (pointInRect(lx, ly, pauseBtnRect())) { this._pause(); return; }
+      if (ly >= LANE_TAP_TOP) {
+        var lane = clamp(Math.floor(lx / (W / 4)), 0, 3);
+        var dir = LANES[lane];
+        this._touchMap[id] = dir;
+        this._pressLane(dir);
+      }
+    } else if (this.state === 'paused') {
+      var pr = pauseMenuRects();
+      if (pointInRect(lx, ly, pr.resume)) { this._resumeFromPause(); return; }
+      if (pointInRect(lx, ly, pr.menu)) { this._toMenu(); return; }
+    } else if (this.state === 'results') {
+      var rr = resultBtnRects();
+      if (pointInRect(lx, ly, rr.replay)) { this._startCountIn(this.song); return; }
+      if (pointInRect(lx, ly, rr.menu)) { this._toMenu(); return; }
+    }
+  };
+
+  Game.prototype._tapUp = function (id) {
+    var dir = this._touchMap[id];
+    if (dir) { this.laneHeld[dir] = false; delete this._touchMap[id]; }
   };
 
   /* ================================================================== *
@@ -555,15 +703,22 @@
       ctx.restore();
     }
 
-    // Controls legend at the bottom.
+    // Controls legend at the bottom (adapts to touch vs keyboard).
     ctx.save();
     ctx.textAlign = 'center';
     ctx.font = '600 15px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(42,35,64,0.85)';
-    ctx.fillText('↑ ↓  choose song      ↵ Enter  start', W / 2, H - 44);
-    ctx.font = '500 14px system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(42,35,64,0.7)';
-    ctx.fillText('Lanes:  D / ←   F / ↓   J / ↑   K / →', W / 2, H - 22);
+    if (this._touchUsed) {
+      ctx.fillText('Tap a battle to select  •  tap again to play', W / 2, H - 44);
+      ctx.font = '500 14px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(42,35,64,0.7)';
+      ctx.fillText('In battle, tap the four arrow buttons in time', W / 2, H - 22);
+    } else {
+      ctx.fillText('↑ ↓  choose song      ↵ Enter  start', W / 2, H - 44);
+      ctx.font = '500 14px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(42,35,64,0.7)';
+      ctx.fillText('Lanes:  D / ←   F / ↓   J / ↑   K / →', W / 2, H - 22);
+    }
     ctx.restore();
   };
 
@@ -631,6 +786,42 @@
       ctx.fillText(f.text, f.x, f.y);
     }
     ctx.restore();
+
+    // --- on-screen touch controls (only once a pointer has been used) ---
+    this._renderTouchControls();
+  };
+
+  /* ------------------------------------------------------------------ *
+   * On-screen touch controls for the battle: 4 big lane buttons along the
+   * bottom + a small pause button. Only drawn after the player has actually
+   * used touch/mouse, so the desktop keyboard experience is unchanged.
+   * ------------------------------------------------------------------ */
+  Game.prototype._renderTouchControls = function () {
+    if (!this._touchUsed) return;
+    var ctx = this.ctx;
+
+    for (var i = 0; i < 4; i++) {
+      var dir = LANES[i];
+      var r = laneBtnRect(i);
+      var lit = Math.max(this.laneFlash[dir], this.laneHeld[dir] ? 0.14 : 0);
+      ctx.save();
+      roundRect(ctx, r.x, r.y, r.w, r.h, 14);
+      // Base fill brightens when the lane is being pressed/hit.
+      ctx.globalAlpha = lit > 0 ? 0.85 : 0.5;
+      ctx.fillStyle = LANE_STYLE[dir].color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = 'rgba(42,35,64,0.5)';
+      ctx.stroke();
+      // Arrow glyph centered in the button.
+      drawArrow(ctx, r.x + r.w / 2, r.y + r.h / 2, Math.min(34, r.h * 0.7), dir, 'rgba(42,35,64,0.9)', null);
+      ctx.restore();
+    }
+
+    // Pause button.
+    var pb = pauseBtnRect();
+    drawButton(ctx, pb, '❚❚  Pause', 'rgba(24,20,38,0.6)', '#FFFFFF', false);
   };
 
   /* ------------------------------------------------------------------ *
@@ -723,15 +914,18 @@
       }
     }
 
-    // Per-lane key hints under the highway.
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.font = '600 13px system-ui, sans-serif';
-    for (var m = 0; m < 4; m++) {
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillText(LANE_STYLE[LANES[m]].keys, laneCenterX(m), HIT_Y + 66);
+    // Per-lane key hints under the highway (hidden on touch, where the big
+    // lane buttons take their place).
+    if (!this._touchUsed) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = '600 13px system-ui, sans-serif';
+      for (var m = 0; m < 4; m++) {
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillText(LANE_STYLE[LANES[m]].keys, laneCenterX(m), HIT_Y + 66);
+      }
+      ctx.restore();
     }
-    ctx.restore();
   };
 
   /* ------------------------------------------------------------------ *
@@ -846,11 +1040,21 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#F9E04C';
     ctx.font = '800 54px system-ui, sans-serif';
-    ctx.fillText('PAUSED', W / 2, H / 2 - 10);
-    ctx.font = '600 18px system-ui, sans-serif';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('Esc / P = resume        Enter = quit to menu', W / 2, H / 2 + 34);
+    ctx.fillText('PAUSED', W / 2, H / 2 - 40);
     ctx.restore();
+
+    if (this._touchUsed) {
+      var pr = pauseMenuRects();
+      drawButton(ctx, pr.resume, '▶  Resume', '#8FD46A', '#2A2340', true);
+      drawButton(ctx, pr.menu, '☰  Menu', 'rgba(255,255,255,0.92)', '#2A2340', true);
+    } else {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = '600 18px system-ui, sans-serif';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('Esc / P = resume        Enter = quit to menu', W / 2, H / 2 + 34);
+      ctx.restore();
+    }
   };
 
   /* ------------------------------------------------------------------ *
@@ -939,13 +1143,19 @@
     }
     ctx.restore();
 
-    // Footer prompt.
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.font = '700 18px system-ui, sans-serif';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('↵ Enter = replay        Esc = menu', W / 2, H - 34);
-    ctx.restore();
+    // Footer prompt / buttons.
+    if (this._touchUsed) {
+      var rr = resultBtnRects();
+      drawButton(ctx, rr.replay, '↻  Replay', '#F6A623', '#2A2340', true);
+      drawButton(ctx, rr.menu, '☰  Menu', 'rgba(255,255,255,0.92)', '#2A2340', true);
+    } else {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = '700 18px system-ui, sans-serif';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('↵ Enter = replay        Esc = menu', W / 2, H - 34);
+      ctx.restore();
+    }
   };
 
   /* ------------------------------------------------------------------ *
@@ -975,6 +1185,12 @@
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
     window.removeEventListener('resize', this._onResize);
+    window.removeEventListener('orientationchange', this._onResize);
+    this.canvas.removeEventListener('touchstart', this._onTouchStart);
+    this.canvas.removeEventListener('touchend', this._onTouchEnd);
+    this.canvas.removeEventListener('touchcancel', this._onTouchEnd);
+    this.canvas.removeEventListener('mousedown', this._onMouseDown);
+    window.removeEventListener('mouseup', this._onMouseUp);
     try { this.audio.stopBacking(); } catch (e) {}
   };
 

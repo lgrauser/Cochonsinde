@@ -1,0 +1,50 @@
+name: Deploy to GitHub Pages
+
+# Publishes the static game (index.html + js/ + styles.css) to GitHub Pages.
+# The site is plain static files, so this just uploads the repo and deploys it.
+on:
+  push:
+    branches:
+      - main
+      - claude/guinea-pig-rhythm-game-l0xq5o
+  workflow_dispatch:
+
+# Least-privilege token permissions required by the Pages deploy actions.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; newer pushes supersede in-flight runs.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        # enablement: true tries to turn Pages on automatically; if your org
+        # blocks that, enable it manually once via Settings -> Pages -> Source:
+        # "GitHub Actions".
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Serve the repository root (index.html lives here). Uses relative
+          # asset paths, so it works under the /Cochonsinde/ subpath.
+          path: "."
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
