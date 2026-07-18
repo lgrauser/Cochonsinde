@@ -123,15 +123,16 @@
    * ================================================================== */
 
   var LANE_TAP_TOP = 452;                // taps below this y in a battle press a lane
-  var LANE_BTN_TOP = 548;                // where the visible lane buttons start
+  var LANE_BTN_TOP = 524;                // where the visible lane buttons start (below the hit line)
 
   function pointInRect(px, py, r) {
     return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
   }
   // Song-select row i (mirrors the geometry drawn in _renderMenu).
   function menuRowRect(i) { return { x: 424, y: 194 + i * 78, w: 432, h: 72 }; }
-  // Visible lane button i (full-width quarters along the bottom).
-  function laneBtnRect(i) { var bw = W / 4; return { x: i * bw + 7, y: LANE_BTN_TOP, w: bw - 14, h: H - LANE_BTN_TOP - 8 }; }
+  // Visible lane button i (full-width quarters along the bottom). Tall + wide
+  // so they're comfortable finger targets once the canvas is scaled down on a phone.
+  function laneBtnRect(i) { var bw = W / 4; return { x: i * bw + 5, y: LANE_BTN_TOP, w: bw - 10, h: H - LANE_BTN_TOP - 6 }; }
   // Small pause button, top-right under the HUD bars.
   function pauseBtnRect() { return { x: W - 150, y: 62, w: 126, h: 34 }; }
   // Two footer buttons on the results screen.
@@ -814,8 +815,8 @@
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = 'rgba(42,35,64,0.5)';
       ctx.stroke();
-      // Arrow glyph centered in the button.
-      drawArrow(ctx, r.x + r.w / 2, r.y + r.h / 2, Math.min(34, r.h * 0.7), dir, 'rgba(42,35,64,0.9)', null);
+      // Arrow glyph centered in the button (bigger for easy targeting).
+      drawArrow(ctx, r.x + r.w / 2, r.y + r.h / 2, Math.min(48, r.h * 0.62), dir, 'rgba(42,35,64,0.92)', null);
       ctx.restore();
     }
 
