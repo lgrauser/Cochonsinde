@@ -191,15 +191,43 @@
   };
 
   /* ----------------------------------------------------------------------- *
-   * BACKING GROOVE
+   * BACKING MUSIC — Andean / Peruvian arrangement
    * A classic WebAudio "lookahead" scheduler: a setInterval fires often and
    * schedules any 16th-note steps that fall inside the next lookahead window,
    * using precise AudioContext timestamps. This keeps timing rock-solid even
    * though setInterval itself is jittery.
+   *
+   * The arrangement evokes Andean folk music (think "El Cóndor Pasa"): a warm
+   * bombo bass-drum with a huayno gallop, chajchas-style shaker, a plucked
+   * charango arpeggio, a root/fifth bass, and a soft quena panpipe melody — all
+   * in A-minor pentatonic over a two-bar Am–G vamp, so every lane the player
+   * taps (A, C, D, E) lands consonantly on the music.
    * ----------------------------------------------------------------------- */
 
   var SCHEDULE_AHEAD = 0.12; // seconds of audio to schedule in advance
   var LOOKAHEAD_MS = 25;     // how often the scheduler wakes up
+  var LOOP_STEPS = 32;       // two bars of sixteenth notes (16 per bar)
+
+  // Two-bar chord vamp: bar 0 = Am, bar 1 = G (i – VII, the Andean sound).
+  // Each chord carries a bass root + fifth and a charango triad (Hz).
+  var CHORDS = [
+    { root: 110.00, fifth: 82.41,  triad: [440.00, 523.25, 659.25] }, // Am: A2/E2, A4-C5-E5
+    { root: 98.00,  fifth: 146.83, triad: [392.00, 493.88, 587.33] }  // G:  G2/D3, G4-B4-D5
+  ];
+
+  // Quena (panpipe) melody, sparse across the 32 steps. A-minor pentatonic
+  // (G4 392, A4 440, C5 523, D5 587, E5 659, G5 784). null-ish = rest.
+  var MELODY = {
+    0: 659.25, 3: 587.33, 4: 523.25, 7: 440.00, 8: 523.25, 10: 587.33, 12: 659.25, 15: 783.99,
+    16: 587.33, 19: 659.25, 20: 587.33, 23: 523.25, 24: 440.00, 27: 392.00, 28: 440.00
+  };
+
+  // Per-theme arrangement flavour.
+  var ARRANGEMENTS = {
+    meadow:   { charango16: false, clap: false, drone: false, melodyVol: 0.12, gain: 0.55 },
+    fiesta:   { charango16: true,  clap: true,  drone: false, melodyVol: 0.13, gain: 0.58 },
+    mountain: { charango16: true,  clap: true,  drone: true,  melodyVol: 0.14, gain: 0.60 }
+  };
 
   AudioEngine.prototype.startBacking = function (bpm, theme) {
     try {
@@ -207,14 +235,15 @@
       this.stopBacking(); // ensure a clean slate (idempotent)
 
       this._theme = theme || 'meadow';
+      this._arr = ARRANGEMENTS[this._theme] || ARRANGEMENTS.meadow;
       var beat = 60 / (bpm && bpm > 0 ? bpm : 100);
       this._secPerStep = beat / 4; // sixteenth notes
       this._step = 0;
       this._backingOn = true;
 
-      // Sub-mix so the whole groove sits a bit under the flute melody.
+      // Sub-mix so the whole groove sits a bit under the player's flute.
       this._backingGain = this.ctx.createGain();
-      this._backingGain.gain.value = 0.55;
+      this._backingGain.gain.value = this._arr.gain;
       this._backingGain.connect(this.master);
 
       var startT = (this.ctx.currentTime) + 0.06;
@@ -256,86 +285,163 @@
     while (this._nextNoteTime < this.ctx.currentTime + SCHEDULE_AHEAD) {
       this._scheduleStep(this._step, this._nextNoteTime);
       this._nextNoteTime += this._secPerStep;
-      this._step = (this._step + 1) % 16; // one bar of 16th notes
+      this._step = (this._step + 1) % LOOP_STEPS; // two bars of 16th notes
     }
   };
 
+  /* --- small instrument voices for the Andean arrangement ---------------- */
+
+  // Bombo: a warm, soft Andean bass drum (lower & rounder than a club kick).
+  AudioEngine.prototype._bombo = function (t, dest, hard) {
+    try {
+      var ctx = this.ctx;
+      var osc = ctx.createOscillator();
+      var g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(120, t);
+      osc.frequency.exponentialRampToValueAtTime(48, t + 0.14);
+      var peak = hard ? 0.85 : 0.34;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + (hard ? 0.22 : 0.14));
+      osc.connect(g); g.connect(dest);
+      osc.start(t); osc.stop(t + 0.26);
+      // A touch of body thump: very short low noise on hard hits.
+      if (hard) this._noise({ t0: t, dur: 0.05, peak: 0.10, filterType: 'lowpass', freq: 220, dest: dest });
+    } catch (e) {}
+  };
+
+  // Charango pluck: a bright, fast-decaying string (two detuned oscillators).
+  AudioEngine.prototype._pluck = function (freq, t, dur, peak, dest) {
+    try {
+      var ctx = this.ctx;
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      g.connect(dest);
+      var o1 = ctx.createOscillator();
+      o1.type = 'triangle';
+      o1.frequency.setValueAtTime(freq, t);
+      o1.connect(g); o1.start(t); o1.stop(t + dur + 0.02);
+      // detuned partner for the shimmery double-course charango timbre
+      var o2 = ctx.createOscillator();
+      o2.type = 'triangle';
+      o2.frequency.setValueAtTime(freq * 1.006, t);
+      var g2 = ctx.createGain();
+      g2.gain.value = 0.5;
+      o2.connect(g2); g2.connect(g);
+      o2.start(t); o2.stop(t + dur + 0.02);
+    } catch (e) {}
+  };
+
+  // Quena/panpipe melody note: soft, breathy, a little vibrato.
+  AudioEngine.prototype._quena = function (freq, t, dur, peak, dest) {
+    try {
+      var ctx = this.ctx;
+      var main = this._tone({ type: 'triangle', freq: freq, t0: t, dur: dur, peak: peak, attack: 0.03, dest: dest });
+      // sub-octave sine for warmth
+      this._tone({ type: 'sine', freq: freq * 0.5, t0: t, dur: dur * 0.9, peak: peak * 0.4, attack: 0.03, dest: dest });
+      // gentle vibrato
+      var lfo = ctx.createOscillator();
+      var lg = ctx.createGain();
+      lfo.frequency.value = 5.2;
+      lg.gain.value = freq * 0.005;
+      lfo.connect(lg); lg.connect(main.frequency);
+      lfo.start(t); lfo.stop(t + dur + 0.02);
+      // soft breath onset
+      this._noise({ t0: t, dur: 0.10, peak: peak * 0.3, filterType: 'highpass', freq: 2400, dest: dest });
+    } catch (e) {}
+  };
+
   /*
-   * One 16th-note step of the groove. Pattern is a simple, danceable beat:
-   *   - kick on steps 0, 4, 8, 12 (four-on-the-floor), plus theme accents
-   *   - hats on off-beats, with the mountain theme adding busier hats
-   *   - a walking-ish bass following a short theme-flavoured note pattern
+   * One 16th-note step of the Andean arrangement. `step` runs 0..31 (two bars).
    */
   AudioEngine.prototype._scheduleStep = function (step, t) {
     var dest = this._backingGain || this.master;
-    var theme = this._theme;
+    var arr = this._arr || ARRANGEMENTS.meadow;
+    var bar = step < 16 ? 0 : 1;
+    var s = step % 16;               // step within the bar
+    var chord = CHORDS[bar];
 
-    // ---- Kick drum: pitched sine that drops fast ----
-    var kick = (step % 4 === 0);
-    // fiesta gets a syncopated extra kick; mountain drives harder.
-    if (theme === 'fiesta' && step === 10) kick = true;
-    if (theme === 'mountain' && (step === 6 || step === 14)) kick = true;
-    if (kick) {
+    // ---- Bombo (huayno gallop): strong on the beat, soft pickups ----
+    var hard = (s === 0 || s === 4 || s === 8 || s === 12);
+    var soft = (s === 6 || s === 14 || (this._theme === 'mountain' && (s === 3 || s === 11)));
+    if (hard) this._bombo(t, dest, true);
+    else if (soft) this._bombo(t, dest, false);
+
+    // ---- Chajchas shaker on the eighth notes (accented off-beats) ----
+    if (s % 2 === 0) {
+      var accent = (s % 4 === 2);
+      this._noise({
+        t0: t, dur: accent ? 0.06 : 0.03, peak: accent ? 0.11 : 0.07,
+        filterType: 'highpass', freq: 6500, dest: dest
+      });
+    }
+
+    // ---- Palmas / clap on the backbeat (fiesta & mountain) ----
+    if (arr.clap && (s === 4 || s === 12)) {
+      this._noise({ t0: t, dur: 0.12, peak: 0.20, filterType: 'bandpass', freq: 1700, Q: 0.7, dest: dest });
+    }
+
+    // ---- Bass: root on beats 1 & 3, fifth on 2 & 4 (warm pulse) ----
+    if (s === 0 || s === 8) this._bassNote(chord.root, t, dest);
+    else if (s === 4 || s === 12) this._bassNote(chord.fifth, t, dest);
+
+    // ---- Charango arpeggio over the chord triad ----
+    var playCharango = arr.charango16 ? true : (s % 2 === 0);
+    if (playCharango) {
+      var note = chord.triad[step % chord.triad.length];
+      // higher octave sparkle on the busy 16th themes' off-steps
+      if (arr.charango16 && s % 2 === 1) note *= 2;
+      var pdur = arr.charango16 ? this._secPerStep * 1.6 : this._secPerStep * 2.4;
+      var ppeak = (s % 4 === 0) ? 0.16 : 0.11;
+      this._pluck(note, t, pdur, ppeak, dest);
+    }
+
+    // ---- Quena melody line ----
+    var mel = MELODY[step];
+    if (mel) {
+      this._quena(mel, t, this._secPerStep * 2.6, arr.melodyVol, dest);
+      // mountain doubles the melody an octave up, quietly, for intensity
+      if (arr.drone) this._quena(mel * 2, t, this._secPerStep * 2.2, arr.melodyVol * 0.5, dest);
+    }
+
+    // ---- Sustained siku drone pad at each bar start (mountain only) ----
+    if (arr.drone && s === 0) {
       try {
         var ctx = this.ctx;
-        var osc = ctx.createOscillator();
-        var g = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(140, t);
-        osc.frequency.exponentialRampToValueAtTime(45, t + 0.12);
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.9, t + 0.005);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-        osc.connect(g); g.connect(dest);
-        osc.start(t); osc.stop(t + 0.2);
+        var pad = ctx.createOscillator();
+        var pg = ctx.createGain();
+        pad.type = 'sawtooth';
+        pad.frequency.setValueAtTime(chord.root * 2, t); // root one octave up, soft
+        var lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 700;
+        var barDur = this._secPerStep * 16;
+        pg.gain.setValueAtTime(0.0001, t);
+        pg.gain.exponentialRampToValueAtTime(0.05, t + 0.15);
+        pg.gain.setValueAtTime(0.05, t + barDur * 0.7);
+        pg.gain.exponentialRampToValueAtTime(0.0001, t + barDur);
+        pad.connect(lp); lp.connect(pg); pg.connect(dest);
+        pad.start(t); pad.stop(t + barDur + 0.05);
       } catch (e) {}
     }
+  };
 
-    // ---- Hi-hat: short high-passed noise ----
-    var hat = (step % 2 === 1);                    // off-beat 8ths by default
-    if (theme === 'mountain') hat = true;          // busier driving hats
-    if (theme === 'fiesta' && step % 2 === 0) hat = hat || (step % 4 === 2);
-    if (hat) {
-      var closed = (step % 4 !== 2);
-      this._noise({
-        t0: t, dur: closed ? 0.03 : 0.08, peak: closed ? 0.10 : 0.14,
-        filterType: 'highpass', freq: 7000, dest: dest
-      });
-    }
-
-    // ---- Snare/clap on the backbeat (steps 4 and 12) ----
-    if (step === 4 || step === 12) {
-      this._noise({
-        t0: t, dur: 0.12, peak: 0.22, filterType: 'bandpass', freq: 1800, Q: 0.7,
-        dest: dest
-      });
-    }
-
-    // ---- Bass line: one note per 8th, following a short theme pattern ----
-    if (step % 2 === 0) {
-      // Root notes (Hz). Each theme walks a different friendly bass figure.
-      var patterns = {
-        meadow:   [110.0, 110.0, 146.83, 130.81, 110.0, 110.0, 98.0, 130.81], // A, A, D, C, A, A, G, C
-        fiesta:   [146.83, 146.83, 110.0, 164.81, 146.83, 130.81, 110.0, 98.0], // D-ish spanish flavour
-        mountain: [110.0, 130.81, 146.83, 130.81, 110.0, 98.0, 110.0, 146.83]
-      };
-      var pat = patterns[theme] || patterns.meadow;
-      var idx = (step / 2) % pat.length;
-      var bf = pat[idx];
-      try {
-        var bctx = this.ctx;
-        var bosc = bctx.createOscillator();
-        var bg = bctx.createGain();
-        // triangle bass = round and warm without being boomy
-        bosc.type = 'triangle';
-        bosc.frequency.setValueAtTime(bf, t);
-        bg.gain.setValueAtTime(0.0001, t);
-        bg.gain.exponentialRampToValueAtTime(0.28, t + 0.01);
-        bg.gain.exponentialRampToValueAtTime(0.0001, t + this._secPerStep * 2 * 0.9);
-        bosc.connect(bg); bg.connect(dest);
-        bosc.start(t); bosc.stop(t + this._secPerStep * 2 + 0.02);
-      } catch (e) {}
-    }
+  // Warm triangle bass note lasting roughly one beat.
+  AudioEngine.prototype._bassNote = function (freq, t, dest) {
+    try {
+      var ctx = this.ctx;
+      var osc = ctx.createOscillator();
+      var g = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.30, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + this._secPerStep * 4 * 0.85);
+      osc.connect(g); g.connect(dest);
+      osc.start(t); osc.stop(t + this._secPerStep * 4 + 0.02);
+    } catch (e) {}
   };
 
   /* ----------------------------------------------------------------------- *

@@ -76,7 +76,7 @@ each publishing exactly one global. `game.js` glues them together.
 
 | File | Global | Responsibility |
 |------|--------|----------------|
-| `js/audio.js` | `AudioEngine` | All sound, synthesized live with WebAudio oscillators + noise (flute tones, backing groove, UI/gameplay SFX). Degrades to a silent no-op if audio is unavailable. |
+| `js/audio.js` | `AudioEngine` | All sound, synthesized live with WebAudio oscillators + noise: breathy pan-flute tones, an **Andean/Peruvian backing track** (bombo drum, chajchas shaker, charango arpeggios, root/fifth bass and a quena panpipe melody over an A-minor-pentatonic Am–G vamp, tempo-locked to each song so you tap in rhythm), and UI/gameplay SFX. Degrades to a silent no-op if audio is unavailable. |
 | `js/characters.js` | `Characters` | Stateless canvas painters: `guineaPig`, `llama`, `mariachi`, `background`, `panFlute`. No assets, just paths and gradients. |
 | `js/songs.js` | `SONGS`, `LANES`, `KEY_MAP` | Pure data: the three battle charts, the canonical lane order, and the `KeyboardEvent.code` &rarr; lane mapping. |
 | `js/rhythm.js` | `RhythmEngine` | Timing/scoring logic: hit windows, combos, health, and which notes are on screen. No DOM/audio/canvas. |
