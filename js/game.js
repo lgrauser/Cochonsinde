@@ -132,7 +132,7 @@
   function menuRowRect(i) { return { x: 424, y: 194 + i * 78, w: 432, h: 72 }; }
   // Visible lane button i (full-width quarters along the bottom). Tall + wide
   // so they're comfortable finger targets once the canvas is scaled down on a phone.
-  function laneBtnRect(i) { var bw = W / 4; return { x: i * bw + 5, y: LANE_BTN_TOP, w: bw - 10, h: H - LANE_BTN_TOP - 6 }; }
+  function laneBtnRect(i) { var bw = W / 4; return { x: i * bw + 5, y: LANE_BTN_TOP, w: bw - 10, h: H - LANE_BTN_TOP - 16 }; }
   // Small pause button, top-right under the HUD bars.
   function pauseBtnRect() { return { x: W - 150, y: 62, w: 126, h: 34 }; }
   // Two footer buttons on the results screen.
@@ -248,6 +248,21 @@
     // CSS box: fit inside the viewport while preserving the 3:2 aspect ratio.
     var vw = window.innerWidth || W;
     var vh = window.innerHeight || H;
+
+    // On touch devices, subtract the body's safe-area padding so the canvas is
+    // sized to fit ABOVE the reserved bottom gutter (the iOS home-indicator
+    // zone). This keeps the on-screen lane buttons clear of the bottom-edge
+    // swipe that would otherwise flip apps. Desktop is left exactly as before.
+    var isTouch = false;
+    try { isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+    if (isTouch) {
+      try {
+        var cs = getComputedStyle(document.body);
+        vw -= (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+        vh -= (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      } catch (e) { /* fall back to full viewport */ }
+    }
+
     var scale = Math.min(vw / W, vh / H);
     if (!isFinite(scale) || scale <= 0) scale = 1;
     this.canvas.style.width = Math.round(W * scale) + 'px';
